@@ -12,10 +12,12 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 // This import includes functions from both ./KeeperBase.sol and
 // ./interfaces/KeeperCompatibleInterface.sol
 import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
 import "hardhat/console.sol";
 
-contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, KeeperCompatibleInterface {
+contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, KeeperCompatibleInterface, VRFConsumerBaseV2   {
     using Counters for Counters.Counter;
 
     Counters.Counter private _tokenIdCounter;
@@ -41,7 +43,20 @@ contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, Keeper
 
     event TokensUpdated(string marketTrend);
 
-    constructor(uint _updateInterval, address _priceFeed) ERC721("Bull&Bear", "BBTK") {
+    //VRF -- https://docs.chain.link/docs/get-a-random-number/
+    VRFCoordinatorV2Interface public COORDINATOR;
+    uint64 s_subscriptionId;
+    bytes32 keyHash = 0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc;
+    uint32 callbackGasLimit = 100000;
+    uint256[] public s_randomWords;
+    uint256 public s_requestId;
+    uint32 numWords =  1;
+    uint16 requestConfirmations = 3;
+
+    enum MarketTrend{BULL, BEAR} // Create Enum
+    MarketTrend public currentMarketTrend = MarketTrend.BULL; 
+
+    constructor(uint _updateInterval, address _priceFeed, address _vrfCoordinator) ERC721("Bull&Bear", "BBTK") VRFConsumerBaseV2(_vrfCoordinator) {
         //Sets keeper update data
         interval = _updateInterval;
         lastTimeStamp = block.timestamp;
@@ -53,6 +68,8 @@ contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, Keeper
         priceFeed = AggregatorV3Interface(_priceFeed);
         currentPrice = getLatestPrice();
 
+        //VRF
+        COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
     }
 
 
@@ -86,12 +103,16 @@ contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, Keeper
             }
             if (latestPrice < currentPrice) {
                 //bear
-                updateAllTokenUris("bear");
+                //updateAllTokenUris("bear");
+                currentMarketTrend = MarketTrend.BEAR;
             } else {
                 //bull
-                updateAllTokenUris("bull");
+                //updateAllTokenUris("bull");
+                currentMarketTrend = MarketTrend.BULL;
             }
 
+            requestRandomnessForNFTUris();
+            //update Current Price
             currentPrice = latestPrice;
             
         } else {
@@ -103,6 +124,7 @@ contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, Keeper
     //https://docs.chain.link/docs/get-the-latest-price/
     function getLatestPrice() public view returns (int256) {
         (
+
             /*uint80 roundID*/,
             int price,
             /*uint startedAt*/,
@@ -111,6 +133,44 @@ contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, Keeper
         ) = priceFeed.latestRoundData();
         //price will return with 8 decimal place
         return price; //example price returned 3034715771688
+    }
+
+    //VRF
+    function requestRandomnessForNFTUris() internal {
+        require(s_subscriptionId != 0, "Subscription ID not set"); 
+
+        // Will revert if subscription is not set and funded.
+        s_requestId = COORDINATOR.requestRandomWords(
+            keyHash,
+            s_subscriptionId, // See https://vrf.chain.link/
+            requestConfirmations, //minimum confirmations before response
+            callbackGasLimit,
+            numWords //: number of random values we want. Max number for rinkeby is 500 (https://docs.chain.link/docs/vrf-contracts/#rinkeby-testnet)
+        );
+
+        console.log("Request ID: ", s_requestId);
+
+        // requestId looks like uint256: 80023009725525451140349768621743705773526822376835636211719588211198618496446
+    }
+
+    function fulfillRandomWords(
+    uint256, /* requestId */
+    uint256[] memory randomWords
+    ) internal override {
+        s_randomWords = randomWords;
+        console.log("---fulfillRandomWords---");
+
+        string[] memory urisForTrend = currentMarketTrend == MarketTrend.BULL ? bullUrisIpfs : bearUrisIpfs;
+        uint256 idx = randomWords[0] % urisForTrend.length;
+
+        for (uint i = 0; i < _tokenIdCounter.current(); i++) {
+            _setTokenURI(i, urisForTrend[idx]);
+        }
+
+        string memory trend = currentMarketTrend == MarketTrend.BULL ? "bullish" : "bearish";
+
+        emit TokensUpdated(trend);
+
     }
     
     function updateAllTokenUris(string memory trend) internal {
@@ -134,6 +194,22 @@ contract BullBear is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable, Keeper
     function setPriceFeedAddress(address _newFeed) public onlyOwner {
         priceFeed = AggregatorV3Interface(_newFeed);
     }
+
+     // For VRF Subscription Manager
+  function setSubscriptionId(uint64 _id) public onlyOwner {
+    console.log("Setting s_subscriptionId");
+    console.log(_id);
+      s_subscriptionId = _id;
+  }
+
+
+  function setCallbackGasLimit(uint32 maxGas) public onlyOwner {
+      callbackGasLimit = maxGas;
+  }
+
+  function setVrfCoodinator(address _address) public onlyOwner {
+    COORDINATOR = VRFCoordinatorV2Interface(_address);
+  }
 
     //Helpers
     function compareStrings(string memory a, string memory b) internal pure returns(bool) {

@@ -9,7 +9,9 @@ import {
   BullBear,
   BullBear__factory,
   MockV3Aggregator,
-  MockV3Aggregator__factory
+  MockV3Aggregator__factory,
+  VRFCoordinatorV2Mock,
+  VRFCoordinatorV2Mock__factory
 } from '../typechain';
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -37,8 +39,7 @@ async function main() {
   );
 
   await mockPriceFeed.deployed();
-
-  console.log("MockV3Aggregator deployed to:", mockPriceFeed.address);
+  console.log("Mock Price Feed deployed to:", mockPriceFeed.address);
 
   console.log(
     "MockV3Aggregator latestRoundData:",
@@ -50,12 +51,34 @@ async function main() {
   );
   const bullBear: BullBear = await bullBear_Factory.deploy(
     10,
-    mockPriceFeed.address
+    mockPriceFeed.address,
+    "0x6168499c0cFfCaCD319c818142124B7A15E857ab" //https://docs.chain.link/docs/vrf-contracts/#configurations VRF Coordinator
   );
 
   await bullBear.deployed();
 
   console.log("BullBear deployed to:", bullBear.address);
+
+  //return;
+  //VRF set subscriptionid
+
+  await bullBear.setSubscriptionId(1);
+
+  // const mockPriceFeedFactory: MockV3Aggregator__factory =
+  //   await ethers.getContractFactory("MockV3Aggregator");
+
+  // const mockPriceFeed: MockV3Aggregator = mockPriceFeedFactory.attach(
+  //
+  // );
+
+  // const bullBear_Factory: BullBear__factory = await ethers.getContractFactory(
+  //   "BullBear"
+  // );
+  // const bullBear: BullBear = bullBear_Factory.attach(
+
+  // );
+
+  //await bullBear.setSubscriptionId();
 
   console.log("Current Price", await bullBear.currentPrice());
 
@@ -64,11 +87,12 @@ async function main() {
   //Revert as no token uri exist
   //console.log("tokenUri", await bullBear.tokenURI(0));
 
-  const mint = await bullBear.safeMint(account1.address);
+  console.log("mint start");
+  const mint = await bullBear.safeMint(owner.address);
 
-  console.log(mint);
+  console.log("mint", mint);
 
-  console.log("balance", await bullBear.balanceOf(account1.address));
+  console.log("balance", await bullBear.balanceOf(owner.address));
 
   console.log("total Supply", (await bullBear.totalSupply()).toString());
 
