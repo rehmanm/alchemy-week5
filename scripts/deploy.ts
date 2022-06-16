@@ -23,7 +23,11 @@ async function main() {
   const bullBear_Factory: BullBear__factory = await ethers.getContractFactory(
     "BullBear"
   );
-  const bullBear: BullBear = await bullBear_Factory.deploy();
+  const bullBear: BullBear = await bullBear_Factory.deploy(
+    10,
+    "0xECe365B379E1dD183B20fc5f022230C044d51404",
+    "0x6168499c0cFfCaCD319c818142124B7A15E857ab" //https://docs.chain.link/docs/vrf-contracts/#configurations VRF Coordinator
+  );
 
   await bullBear.deployed();
 
